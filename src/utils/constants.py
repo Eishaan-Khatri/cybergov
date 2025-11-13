@@ -34,9 +34,9 @@ INFERENCE_TRIGGER_DEPLOYMENT_ID = "327f24eb-04db-4d30-992d-cce455b4b241"
 INFERENCE_SCHEDULE_DELAY_MINUTES = 30
 
 NETWORK_MAP = {
-    "polkadot": "https://polkadot-api.subsquare.io/gov2/referendums",
-    "kusama": "https://kusama-api.subsquare.io/gov2/referendums",
-    "paseo": "https://paseo-api.subsquare.io/gov2/referendums",
+    "polkadot": "https://polkadot.polkassembly.io/api/v2/ReferendumV2",
+    "kusama":   "https://kusama.polkassembly.io/api/v2/ReferendumV2",
+    "paseo":    "https://paseo.polkassembly.io/api/v2/ReferendumV2",
 }
 
 # Mapping for user-friendly conviction input

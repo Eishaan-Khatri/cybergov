@@ -1,0 +1,48 @@
+{
+  "network": "polkadot",
+  "proposal_id": 1783,
+  "treasury_health": {
+    "treasury_balance_dot": 15292703.95,
+    "next_burn_dot": 152927.04,
+    "next_spend_date": "2025-11-17T19:40:45.091Z",
+    "burn_percentage": 1.0,
+    "health_status": "healthy"
+  },
+  "voting_patterns": {
+    "total_votes": 10,
+    "aye_count": 10,
+    "nay_count": 0,
+    "abstain_count": 0,
+    "aye_percentage": 100.0,
+    "aye_balance_dot": 2001159.47,
+    "nay_balance_dot": 0.0,
+    "aye_balance_percentage": 100.0,
+    "voting_momentum": "strong_aye"
+  },
+  "delegation_stats": {
+    "totalDelegatedTokens": "4492275018335415805",
+    "totalDelegatedVotes": 286607,
+    "totalDelegates": 160,
+    "totalDelegators": 555
+  },
+  "track_counts": {
+    "Root": 1,
+    "WishForChange": 1,
+    "BigSpender": 2,
+    "MediumSpender": 2,
+    "SmallSpender": 3,
+    "BigTipper": 0,
+    "SmallTipper": 0,
+    "Treasurer": 1,
+    "WhitelistedCaller": 0,
+    "StakingAdmin": 0,
+    "LeaseAdmin": 0,
+    "FellowshipAdmin": 0,
+    "GeneralAdmin": 0,
+    "AuctionAdmin": 0,
+    "ReferendumCanceller": 0,
+    "ReferendumKiller": 0,
+    "bounty_dashboard": 23
+  },
+  "magi_context": "\n<governance_context>\n\n## Treasury Status\n- Current Balance: 15,292,703.95 DOT\n- Next Burn: 152,927.04 DOT (1.0%)\n- Treasury Health: HEALTHY\n- Next Spend Period: 2025-11-17T19:40:45.091Z\n\n## Current Voting Patterns\n- Total Votes Cast: 10\n- Aye: 10 (100.0%)\n- Nay: 0\n- Voting Power (Aye): 2,001,159.47 DOT (100.0%)\n- Voting Power (Nay): 0.00 DOT\n- Momentum: STRONG_AYE\n\n## Delegation Landscape\n- Total Delegated: 449,227,501.83 DOT\n- Active Delegates: 160\n- Total Delegators: 555\n\n## Track Activity\n- Active Proposals: 10\n- Treasury Track: 1 active\n- Spender Tracks: 7 active\n\n</governance_context>\n"
+}

@@ -1,12 +1,14 @@
 import json
 from typing import Dict, Any, Optional
-
+import firebase_admin
+from firebase_admin import credentials as fb_credentials
+from firebase_admin import firestore as admin_firestore  
+from google.cloud import firestore
 import httpx
 from prefect import flow, task, get_run_logger
-from prefect.blocks.system import Secret, String
+from prefect.blocks.system import Secret
 from prefect.tasks import exponential_backoff
 from prefect.server.schemas.states import Completed, Failed
-import s3fs
 import datetime
 from prefect.server.schemas.filters import (
     FlowRunFilter,
@@ -39,30 +41,12 @@ class InvalidTrackError(Exception):
     pass
 
 
-async def load_s3_credentials():
-    """Load S3 credentials from Prefect blocks."""
-    s3_bucket_block = await String.load("scaleway-bucket-name")
-    endpoint_block = await String.load("scaleway-s3-endpoint-url")
-    access_key_block = await Secret.load("scaleway-write-access-key-id")
-    secret_key_block = await Secret.load("scaleway-write-secret-access-key")
-    
-    return {
-        "s3_bucket": s3_bucket_block.value,
-        "endpoint_url": endpoint_block.value,
-        "access_key": access_key_block.get(),
-        "secret_key": secret_key_block.get(),
-    }
 
+async def load_firestore_credentials():
+    """Load Firestore credentials from Prefect blocks."""
+    credentials_block = await Secret.load("firebase-credentials-json")
+    return json.loads(credentials_block.get())
 
-def setup_s3_filesystem(access_key: str, secret_key: str, endpoint_url: str):
-    """Create and return an S3FileSystem instance."""
-    return s3fs.S3FileSystem(
-        key=access_key,
-        secret=secret_key,
-        client_kwargs={
-            "endpoint_url": endpoint_url,
-        },
-    )
 
 
 def validate_proposal_track(proposal_data: Dict[str, Any]) -> bool:
@@ -116,34 +100,6 @@ def fetch_subsquare_proposal_data(url: str) -> Dict[str, Any]:
         raise ProposalParseError(f"API response from {url} was not valid JSON.") from e
 
 
-@task(name="Save JSON to S3", retries=2, retry_delay_seconds=5)
-def save_to_s3(
-    data: Dict[str, Any],
-    s3_bucket: str,
-    endpoint_url: str,
-    access_key: str,
-    secret_key: str,
-    full_s3_path: str,
-):
-    """Saves the extracted JSON data to a specified S3 path."""
-    logger = get_run_logger()
-    logger.info(f"Saving JSON to {full_s3_path}...")
-    try:
-        s3 = s3fs.S3FileSystem(
-            key=access_key,
-            secret=secret_key,
-            client_kwargs={
-                "endpoint_url": endpoint_url,
-            },
-        )
-
-        with s3.open(full_s3_path, "w") as f:
-            json.dump(data, f, indent=2)
-
-        logger.info(f"✅ Success! Proposal data saved to {full_s3_path}")
-    except Exception as e:
-        logger.error(f"❌ Failed to write to S3 at {full_s3_path}: {e}")
-        raise
 
 
 @flow(name="Fetch and Store Raw Subsquare Data")
@@ -153,8 +109,8 @@ def fetch_and_store_raw_subsquare_data(network: str, proposal_id: int) -> Option
     Returns the S3 path of the stored data, or None if skipped.
     """
 
-    s3_bucket_block = String.load("scaleway-bucket-name")
-    endpoint_block = String.load("scaleway-s3-endpoint-url")
+    s3_bucket_block = Secret.load("scaleway-bucket-name")
+    endpoint_block = Secret.load("scaleway-s3-endpoint-url")
     access_key_block = Secret.load("scaleway-write-access-key-id")
     secret_key_block = Secret.load("scaleway-write-secret-access-key")
 
@@ -257,8 +213,8 @@ def archive_previous_run(network: str, proposal_id: int):
     """
     logger = get_run_logger()
 
-    s3_bucket_block = String.load("scaleway-bucket-name")
-    endpoint_block = String.load("scaleway-s3-endpoint-url")
+    s3_bucket_block = Secret.load("scaleway-bucket-name")
+    endpoint_block = Secret.load("scaleway-s3-endpoint-url")
     access_key_block = Secret.load("scaleway-write-access-key-id")
     secret_key_block = Secret.load("scaleway-write-secret-access-key")
 
@@ -342,8 +298,8 @@ def generate_prompt_content(network: str, proposal_id: int):
     logger.info(f"Starting content generation for {network} proposal {proposal_id}.")
 
     # TODO clean up all this S3 mess
-    s3_bucket_block = String.load("scaleway-bucket-name")
-    endpoint_block = String.load("scaleway-s3-endpoint-url")
+    s3_bucket_block = Secret.load("scaleway-bucket-name")
+    endpoint_block = Secret.load("scaleway-s3-endpoint-url")
     access_key_block = Secret.load("scaleway-write-access-key-id")
     secret_key_block = Secret.load("scaleway-write-secret-access-key")
     openrouter_api_key_block = Secret.load("openrouter-api-key")

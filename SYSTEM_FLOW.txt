@@ -1,0 +1,356 @@
+CYBERGOV SYSTEM FLOW
+====================
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 1: DISPATCHER                           │
+│  (cybergov_dispatcher.py - Runs every few hours via Prefect)   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Check Substrate Sidecar for new    │
+        │ proposals (referendumCount)         │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Compare with last processed ID      │
+        │ stored in S3                        │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Schedule SCRAPER for each new       │
+        │ proposal (2 day delay)              │
+        └─────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 2: SCRAPER                              │
+│  (cybergov_data_scraper.py - Triggered by dispatcher)          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Fetch proposal from Subsquare API   │
+        │ GET /gov2/referendums/{id}          │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Validate track ID                   │
+        │ (Only process delegated tracks)     │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Save raw_subsquare_data.json to S3  │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Generate content.md using DSPy      │
+        │ (Sanitize, analyze, format)         │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Schedule INFERENCE (30 min delay)   │
+        └─────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 3: INFERENCE                            │
+│  (cybergov_inference.py - Triggers GitHub Actions)             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Trigger GitHub Actions workflow     │
+        │ POST /repos/.../dispatches          │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Poll for workflow run ID            │
+        │ (Find run created after trigger)    │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Monitor workflow status             │
+        │ (Wait for completion)               │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ If successful, schedule VOTER       │
+        │ (30 min delay)                      │
+        └─────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│              STEP 3.5: GITHUB ACTIONS                           │
+│  (run_polkadot.yml - Runs on GitHub's infrastructure)          │
+│  (cybergov_evaluate_single_proposal_and_vote.py)                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Download inputs from S3:            │
+        │ - raw_subsquare_data.json           │
+        │ - content.md                        │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Run MAGI Agent: BALTHAZAR           │
+        │ Model: GPT-4o                       │
+        │ Personality: Strategic analyst      │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Run MAGI Agent: MELCHIOR            │
+        │ Model: Gemini 2.5 Pro               │
+        │ Personality: Ecosystem growth       │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Run MAGI Agent: CASPAR              │
+        │ Model: Grok Code Fast               │
+        │ Personality: Sustainability         │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Consolidate votes using truth table │
+        │ Example: 2 Aye + 1 Nay = Abstain    │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Generate manifest.json with:        │
+        │ - GitHub run ID                     │
+        │ - Commit SHA                        │
+        │ - Input/output hashes               │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Upload to S3:                       │
+        │ - llm_analyses/*.json               │
+        │ - vote.json                         │
+        │ - manifest.json                     │
+        └─────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 4: VOTER                                │
+│  (cybergov_voter.py - Submits on-chain transaction)            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Download vote.json from S3          │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Calculate manifest hash             │
+        │ SHA256(manifest.json)               │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Create batch transaction:           │
+        │ 1. proxy.vote (via proxy account)   │
+        │ 2. system.remark (manifest hash)    │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Sign with proxy account keypair     │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Submit via Substrate Sidecar        │
+        │ POST /transaction                   │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Schedule COMMENTER (30 min delay)   │
+        └─────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 5: COMMENTER                            │
+│  (cybergov_commenter.py - Posts to Subsquare forum)            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Download vote.json from S3          │
+        │ Extract summary_rationale           │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Format HTML comment with:           │
+        │ - Individual agent votes            │
+        │ - Rationales                        │
+        │ - Links to manifest & GitHub run    │
+        │ - Feedback form                     │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ Sign comment with proxy keypair     │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+        ┌─────────────────────────────────────┐
+        │ POST to Subsquare API               │
+        │ /referenda/{id}/comments            │
+        └─────────────────────────────────────┘
+                              │
+                              ▼
+                          ✅ DONE!
+
+
+DATA FLOW THROUGH S3
+====================
+
+s3://bucket/proposals/{network}/{proposal_id}/
+│
+├── raw_subsquare_data.json    [Created by SCRAPER]
+│   └── Raw API response from Subsquare
+│
+├── content.md                 [Created by SCRAPER]
+│   └── Enriched markdown for LLM analysis
+│
+├── llm_analyses/              [Created by GITHUB ACTIONS]
+│   ├── balthazar.json
+│   │   └── {decision, rationale, model_name, timestamp}
+│   ├── melchior.json
+│   │   └── {decision, rationale, model_name, timestamp}
+│   └── caspar.json
+│       └── {decision, rationale, model_name, timestamp}
+│
+├── vote.json                  [Created by GITHUB ACTIONS]
+│   └── {final_decision, is_unanimous, votes_breakdown, summary_rationale}
+│
+└── manifest.json              [Created by GITHUB ACTIONS]
+    └── {provenance, inputs[], outputs[]}
+        └── Each with SHA256 hash for verification
+
+
+VOTE CONSOLIDATION TRUTH TABLE
+===============================
+
+Agent 1  │ Agent 2  │ Agent 3  │ Final Vote
+─────────┼──────────┼──────────┼────────────
+AYE      │ AYE      │ AYE      │ AYE (unanimous)
+AYE      │ AYE      │ ABSTAIN  │ AYE
+AYE      │ AYE      │ NAY      │ ABSTAIN
+AYE      │ NAY      │ NAY      │ ABSTAIN
+AYE      │ NAY      │ ABSTAIN  │ ABSTAIN
+AYE      │ ABSTAIN  │ ABSTAIN  │ ABSTAIN
+NAY      │ NAY      │ NAY      │ NAY (unanimous)
+NAY      │ NAY      │ ABSTAIN  │ NAY
+NAY      │ ABSTAIN  │ ABSTAIN  │ ABSTAIN
+ABSTAIN  │ ABSTAIN  │ ABSTAIN  │ ABSTAIN
+
+
+SECURITY & TRANSPARENCY
+=======================
+
+1. PROMPT INJECTION PROTECTION
+   └── DSPy few-shot compilation with anti-injection examples
+   └── Agents trained to ignore instructions in proposal text
+
+2. CRYPTOGRAPHIC ATTESTATION
+   └── manifest.json contains SHA256 of all inputs/outputs
+   └── Manifest hash included as on-chain remark
+   └── Anyone can verify: hash(manifest.json) == on_chain_remark
+
+3. PUBLIC EXECUTION
+   └── All inference runs on GitHub Actions (public logs)
+   └── S3 data publicly accessible via CDN
+   └── Community can audit every decision
+
+4. PROPOSAL SANITIZATION
+   └── DSPy agent analyzes and sanitizes content
+   └── Flags dangerous external links
+   └── Detects excessive verbosity
+   └── Assesses vote readiness
+
+
+KEY ACCOUNTS
+============
+
+Network: Polkadot
+├── Main Account:  13Q56KnUmLNe8fomKD3hoY38ZwLKZgRGdY4RTovRNFjMSwKw
+│   └── Holds funds, sets up proxy
+└── Proxy Account: 15DbGtWxaAU6tDPpdZhP9QyVZZWdSXaGCjD88cRZhhdCKTjE
+    └── Signs transactions, votes on proposals
+
+Network: Kusama
+├── Main Account:  EyPcJsHXv86Snch8GokZLZyrucug3gK1RAghBD2HxvL1YRZ
+└── Proxy Account: GWUyiyVmA6pbubhM9h7A6qGDqTJKJK3L3YoJsWe6DP7m67a
+
+Network: Paseo (Testnet)
+├── Main Account:  13Q56KnUmLNe8fomKD3hoY38ZwLKZgRGdY4RTovRNFjMSwKw
+└── Proxy Account: 14zNhvyLnJKtYRmfptavEPWHuV9qEXZQNqXCjDmnvjrg1gtL
+
+
+TIMING & DELAYS
+===============
+
+Event                    │ Delay        │ Reason
+─────────────────────────┼──────────────┼────────────────────────
+New proposal detected    │ 2 days       │ Give proposer time to add details
+Scraping complete        │ 30 minutes   │ Allow S3 propagation
+Inference complete       │ 30 minutes   │ Verify data integrity
+Vote submitted           │ 30 minutes   │ Confirm transaction
+Comment posted           │ -            │ Final step
+
+
+MANUAL EXECUTION COMMANDS
+==========================
+
+# Step 1: Scrape proposal
+python src/cybergov_data_scraper.py polkadot 1234
+
+# Step 2: Run inference (local debugging)
+PROPOSAL_ID=1234 NETWORK=polkadot \
+S3_ENDPOINT_URL=xxx S3_BUCKET_NAME=xxx \
+S3_ACCESS_KEY_ID=xxx S3_ACCESS_KEY_SECRET=xxx \
+OPENROUTER_API_KEY=xxx \
+python src/cybergov_evaluate_single_proposal_and_vote.py
+
+# Step 2 (alternative): Trigger GitHub Actions
+python src/cybergov_inference.py polkadot 1234
+
+# Step 3: Submit vote
+python src/cybergov_voter.py polkadot 1234
+
+# Step 4: Post comment
+python src/cybergov_commenter.py polkadot 1234
+
+
+VERIFICATION COMMANDS
+=====================
+
+# Verify manifest hash matches on-chain remark
+python scripts/verify_hash.py polkadot 1234
+
+# Verify vote consolidation logic
+python scripts/verify_vote.py polkadot 1234
+
+# Check S3 contents
+aws s3 ls s3://bucket/proposals/polkadot/1234/ --recursive
+
+# View transaction on Subscan
+https://polkadot.subscan.io/extrinsic/{tx_hash}
+
+# View GitHub Actions run
+https://github.com/KarimJedda/cybergov/actions/runs/{run_id}
