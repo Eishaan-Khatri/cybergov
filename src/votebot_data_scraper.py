@@ -161,7 +161,30 @@ def fetch_polkassembly_proposal_data(network: str, proposal_id: int) -> Dict[str
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON from {proposal_url}: {e}")
         raise ProposalParseError(f"Invalid JSON from {proposal_url}") from e
+    
+    
+@task(name="Fetch Polkassembly on-chain metadata", retries=3, retry_delay_seconds=5)
+def fetch_polkassembly_onchain_metadata(network: str, proposal_id: int) -> Dict[str, Any]:
+    logger = get_run_logger()
 
+    if network not in NETWORK_MAP:
+        raise ProposalFetchError(f"Invalid network '{network}'")
+
+    base_url = NETWORK_MAP[network].rstrip("/")
+    url = f"{base_url}/{proposal_id}/on-chain-metadata"
+
+    headers = {"User-Agent": "cybergov-scraper/1.0"}
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Fetched on-chain metadata for {network}/{proposal_id}")
+            return data
+    except Exception as e:
+        logger.error(f"Failed to fetch on-chain metadata: {e}")
+        return {}
 
 # --- Firestore write/update tasks ---------------------------------------------
 @task(name="Save Raw Data to Firestore", retries=2, retry_delay_seconds=5)
@@ -176,7 +199,7 @@ def save_raw_data_to_firestore(raw_data: Dict[str, Any], network: str, proposal_
         doc_id = f"{network}-{proposal_id}"
         doc_ref = db.collection("proposals").document(doc_id)
 
-        now_iso = datetime.datetime.utcnow().isoformat() + "Z"
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         payload = {
             "network": network,
@@ -305,38 +328,39 @@ def generate_prompt_content(raw_proposal_data: Dict[str, Any], network: str) -> 
 
 # --- Validation helper --------------------------------------------------------
 def extract_track_value(proposal_data: Dict[str, Any]) -> Optional[int]:
-    """
-    Extract track id from Polkassembly ReferendumV2 response.
-    Tries commonly used fields in decreasing certainty order.
-    """
-    # Polkassembly store on-chain metadata in onchainData (often nested)
-    try:
-        # onchainData may be dict or list - handle common shapes
-        onchain = proposal_data.get("onchainData") or {}
-        # If onchain is a list with dicts, try first entry
-        if isinstance(onchain, list) and len(onchain) > 0 and isinstance(onchain[0], dict):
-            onchain = onchain[0]
-
-        # common keys
-        candidates = [
-            onchain.get("track"),
-            onchain.get("trackNumber"),
-            onchain.get("track_number"),
-            proposal_data.get("track_number"),
-            proposal_data.get("track"),
-        ]
-
-        for val in candidates:
-            if val is None:
-                continue
+    # direct keys
+    for key in ("trackNumber", "track_number", "track"):
+        val = proposal_data.get(key)
+        if val is not None:
             try:
                 return int(val)
             except Exception:
-                # if not an int, skip
-                continue
-    except Exception:
-        pass
+                pass
+
+    # onchainData may be dict or list with nested track values
+    onchain = proposal_data.get("onchainData") or {}
+    if isinstance(onchain, list) and onchain:
+        onchain = onchain[0]
+    for key in ("trackNumber", "track_number", "track"):
+        val = onchain.get(key) if isinstance(onchain, dict) else None
+        if val is not None:
+            try:
+                return int(val)
+            except Exception:
+                pass
+
+    # last-resort: nested keys like payloads returned by on-chain endpoint
+    nested = proposal_data.get("onchainMetadata") or {}
+    for key in ("trackNumber", "track_number", "track"):
+        val = nested.get(key)
+        if val is not None:
+            try:
+                return int(val)
+            except Exception:
+                pass
+
     return None
+
 
 
 def validate_proposal_track_polkassembly(proposal_data: Dict[str, Any]) -> bool:
@@ -456,6 +480,13 @@ async def fetch_proposal_data(
         # 3) Fetch raw data from Polkassembly
         logger.info(f"Fetching data for proposal {proposal_id} on {network}")
         raw_proposal_data = fetch_polkassembly_proposal_data(network=network, proposal_id=proposal_id)
+        onchain_meta = fetch_polkassembly_onchain_metadata(network=network, proposal_id=proposal_id)
+
+        # merge trackNumber into proposal data
+        if "trackNumber" in onchain_meta:
+            raw_proposal_data["trackNumber"] = onchain_meta["trackNumber"]
+
+        raw_proposal_data["OnChain_MetaData"] = onchain_meta
 
         # 4) Save raw data to Firestore
         save_raw_data_to_firestore(raw_data=raw_proposal_data, network=network, proposal_id=proposal_id)

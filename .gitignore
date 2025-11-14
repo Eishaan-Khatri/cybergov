@@ -6,3 +6,5 @@ STATE_MACHINE.md
 .venv
 .ruff_cache
 workspace
+
+*.json

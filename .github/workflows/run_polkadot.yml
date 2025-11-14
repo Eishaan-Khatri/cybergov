@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       proposal_id:
-        description: 'The proposal ID to process'
+        description: 'Proposal ID to process'
         required: true
         type: string
 
@@ -15,30 +15,25 @@ jobs:
     name: 'Cybergov for #${{ inputs.proposal_id }} on Polkadot'
     runs-on: ubuntu-latest
 
-    environment: Cybergov
-
     env:
       PROPOSAL_ID: ${{ inputs.proposal_id }}
       NETWORK: 'polkadot'
-      S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
-      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-      S3_ACCESS_KEY_SECRET: ${{ secrets.S3_ACCESS_KEY_SECRET }}
-      S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+      FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+      POLKASSEMBLY_API_KEY: ${{ secrets.POLKASSEMBLY_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      
 
     steps:
-      - name: 1. Checkout repository code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: 3. Install dependencies
-        run: |
-          pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: 4. Run Evaluation and Voting Script
-        run: python src/cybergov_evaluate_single_proposal_and_vote.py
+      - name: Run evaluation script
+        run: python src/votebot_evaluate_single_proposal_and_vote.py

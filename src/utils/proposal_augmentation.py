@@ -3,6 +3,9 @@ from dspy.teleprompt import BootstrapFewShot
 from typing import Dict, Any, Set
 from collections import defaultdict
 import re
+from utils.gemini_lm import GeminiLM
+import os
+
 
 # TODO shove this in constants
 SUPPORTED_SYMBOLS: Set[str] = {"DOT", "KSM", "USDC", "USDT", "PAS"}
@@ -293,13 +296,13 @@ def parse_proposal_data_with_units(proposal_data: Dict[str, Any], network: str) 
 def generate_content_for_magis(
     proposal_data: Dict[str, Any], logger, openrouter_model, openrouter_api_key, network
 ):
-    local_lm = dspy.LM(
-        model=openrouter_model,
-        api_base="https://openrouter.ai/api/v1",
-        api_key=openrouter_api_key,
-    )
+    import os
 
-    dspy.settings.configure(lm=local_lm)
+    lm = GeminiLM(
+    model="gemini-2.5-flash",
+    api_key=os.getenv("GEMINI_API_KEY"))
+    
+    dspy.configure(lm=lm)
 
     augmenter = ProposalAugmenter()
     logger.info(
@@ -318,5 +321,4 @@ def generate_content_for_magis(
     )
 
     logger.info("DSPY---> Analysis done. Returning content.md")
-
     return format_analysis_to_markdown(analysis, parsed_data)

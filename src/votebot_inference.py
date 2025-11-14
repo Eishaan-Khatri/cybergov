@@ -1,4 +1,4 @@
-# cybergov_inference.py
+# src/votebot_inference.py
 from typing import Tuple, Optional
 from prefect import flow, task, get_run_logger
 from prefect.blocks.system import Secret
@@ -15,7 +15,10 @@ from prefect.server.schemas.filters import (
     FlowRunFilterName,
 )
 from prefect.client.schemas.objects import StateType
+import os
 
+# To ensure transparency, this has to run on GitHub actions
+# That way it is public, and the data + logic used to vote are transparent
 from utils.constants import (
     VOTING_DEPLOYMENT_ID,
     VOTING_SCHEDULE_DELAY_MINUTES,
@@ -27,20 +30,39 @@ from utils.constants import (
 )
 
 
-@task
-def _load_github_pat() -> str:
-    logger = get_run_logger()
+# ---------- Helper: get token from Prefect Secret or env ----------
+def get_github_pat() -> str:
+    """
+    Try to read Prefect Secret 'github-pat' first (if Prefect is available).
+    Otherwise fall back to environment variable GITHUB_PAT.
+
+    Returns:
+        str: GitHub Personal Access Token
+    Raises:
+        RuntimeError if token not found.
+    """
+    # 1) Prefer Prefect Secret (if Prefect is configured)
     try:
-        block = Secret.load("github-pat")
-        pat = block.get()
-        if not pat:
-            raise ValueError("Secret 'github-pat' returned empty value.")
-        return pat
-    except Exception as e:
-        logger.error("Failed to load Prefect Secret 'github-pat': %s", e)
-        raise RuntimeError("Missing or invalid Prefect Secret 'github-pat'") from e
+        block = Secret.load("github-pat")  # will raise if block missing
+        val = block.get()
+        if val:
+            return val
+    except Exception:
+        # ignore - we will try env var next
+        pass
+
+    # 2) Environment variable fallback (useful for local CLI runs)
+    env_val = os.getenv("GITHUB_PAT")
+    if env_val:
+        return env_val
+
+    # Not found — tell user what to do
+    raise RuntimeError(
+        "GitHub PAT not found. Create Prefect Secret 'github-pat' or set environment variable GITHUB_PAT."
+    )
 
 
+# ---------- Tasks (unchanged semantics but use get_github_pat, not .run) ----------
 @task
 def trigger_github_action_worker(proposal_id: int, network: str) -> Tuple[str, datetime]:
     """
@@ -50,7 +72,7 @@ def trigger_github_action_worker(proposal_id: int, network: str) -> Tuple[str, d
     logger = get_run_logger()
     logger.info("Triggering GitHub Action for proposal %s on '%s'", proposal_id, network)
 
-    pat = _load_github_pat.run()  # synchronous call inside a sync task
+    pat = get_github_pat()
 
     workflow_file_name = GH_WORKFLOW_NETWORK_MAPPING.get(network)
     if not workflow_file_name:
@@ -81,7 +103,7 @@ def find_workflow_run(network: str, proposal_id: int, workflow_file_name: str, t
     logger = get_run_logger()
     logger.info("Searching for workflow run for '%s' (workflow=%s)...", network, workflow_file_name)
 
-    pat = _load_github_pat.run()
+    pat = get_github_pat()
     url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow_file_name}/runs"
     headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"Bearer {pat}"}
     params = {"event": "workflow_dispatch", "branch": "main", "per_page": 10}
@@ -95,9 +117,7 @@ def find_workflow_run(network: str, proposal_id: int, workflow_file_name: str, t
 
         for run in runs:
             created_at = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
-            # GitHub UI display_title contains a human-friendly title; fallback to run['name'] if not present
             display_title = (run.get("display_title") or run.get("name") or "").lower()
-            # common display: "#1234 on polkadot" or similar; keep case-insensitive matching
             if created_at >= trigger_time and f"#{proposal_id} on {network}" in display_title:
                 logger.info("Found matching workflow run id=%s (created=%s)", run["id"], created_at.isoformat())
                 return int(run["id"])
@@ -116,7 +136,7 @@ def poll_workflow_run_status(run_id: int) -> str:
     logger = get_run_logger()
     logger.info("Polling workflow run status for id=%s", run_id)
 
-    pat = _load_github_pat.run()
+    pat = get_github_pat()
     url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs/{run_id}"
     headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"Bearer {pat}"}
 
@@ -219,13 +239,16 @@ async def github_action_trigger_and_monitor(proposal_id: int, network: str, sche
         logger.info("Magi inference succeeded; vote scheduling skipped (schedule_vote=False).")
 
 
+# ---------- CLI wrapper so you can run this locally without Prefect server ----------
 if __name__ == "__main__":
     import asyncio, sys
 
     if len(sys.argv) != 3:
-        print("Usage: python cybergov_inference.py <network> <proposal_id>")
+        print("Usage: python src/votebot_inference.py <network> <proposal_id>")
         sys.exit(1)
 
     net = sys.argv[1]
     pid = int(sys.argv[2])
+
+    # If you don't want to require Prefect server / deployments, run with schedule_vote=False
     asyncio.run(github_action_trigger_and_monitor(proposal_id=pid, network=net, schedule_vote=False))

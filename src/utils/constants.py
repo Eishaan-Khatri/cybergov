@@ -13,7 +13,7 @@ SCRAPING_SCHEDULE_DELAY_DAYS = 2
 COMMENTING_DEPLOYMENT_ID = "36bdbe3d-82c0-4a80-a7c3-8ee5e485c51c"
 COMMENTING_SCHEDULE_DELAY_MINUTES = 30
 
-GITHUB_REPO = "KarimJedda/cybergov"
+GITHUB_REPO = "Eishaan-Khatri/cybergov"
 
 GH_WORKFLOW_NETWORK_MAPPING = {
     "polkadot": "run_polkadot.yml",
