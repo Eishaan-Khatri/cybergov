@@ -1,3 +1,4 @@
+import os 
 CYBERGOV_PARAMS = {
     ## skip proposals before this id, regardless of what's going on
     "min_proposal_id": {"polkadot": 1740, "kusama": 585, "paseo": 103},
@@ -13,7 +14,7 @@ SCRAPING_SCHEDULE_DELAY_DAYS = 2
 COMMENTING_DEPLOYMENT_ID = "36bdbe3d-82c0-4a80-a7c3-8ee5e485c51c"
 COMMENTING_SCHEDULE_DELAY_MINUTES = 30
 
-GITHUB_REPO = "Eishaan-Khatri/cybergov"
+GITHUB_REPO = os.getenv("GITHUB_REPOSITORY", "Eishaan-Khatri/cybergov")
 
 GH_WORKFLOW_NETWORK_MAPPING = {
     "polkadot": "run_polkadot.yml",
@@ -62,11 +63,11 @@ CYBERGOV_KUSAMA_PROXY_PUBKEY = "GWUyiyVmA6pbubhM9h7A6qGDqTJKJK3L3YoJsWe6DP7m67a"
 
 proxy_mapping = {
     "paseo": {"main": CYBERGOV_PASEO_MAIN_PUBKEY, "proxy": CYBERGOV_PASEO_PROXY_PUBKEY},
-    "kusama": {
+    "polkadot": {
         "main": CYBERGOV_POLKADOT_MAIN_PUBKEY,
         "proxy": CYBERGOV_POLKADOT_PROXY_PUBKEY,
     },
-    "polkadot": {
+    "kusama": {
         "main": CYBERGOV_KUSAMA_MAIN_PUBKEY,
         "proxy": CYBERGOV_KUSAMA_PROXY_PUBKEY,
     },

@@ -8,7 +8,9 @@ import httpx
 from prefect import flow, task, get_run_logger
 from prefect.blocks.system import Secret
 from prefect.tasks import exponential_backoff
+from prefect.states import Scheduled
 from prefect.server.schemas.states import Completed, Failed
+
 import datetime
 from prefect.server.schemas.filters import (
     FlowRunFilter,
@@ -224,9 +226,9 @@ def save_raw_data_to_firestore(raw_data: Dict[str, Any], network: str, proposal_
 @task(name="Archive previous Firestore version", retries=1)
 def archive_previous_firestore_version(network: str, proposal_id: int):
     """
-    If a document already exists, copy its current content to a 'versions' subcollection
-    with a timestamp, then increment the 'version' field in the parent doc when new data is written.
-    This is a minimal filesystem-like archive replacement for S3 mv.
+    Archive the previous Firestore version safely by:
+    - Extracting important fields (trackNumber, proposer, title)
+    - Storing the full old document as a JSON string (Firestore-safe)
     """
     logger = get_run_logger()
     try:
@@ -234,29 +236,51 @@ def archive_previous_firestore_version(network: str, proposal_id: int):
         doc_id = f"{network}-{proposal_id}"
         doc_ref = db.collection("proposals").document(doc_id)
         snapshot = doc_ref.get()
+
         if not snapshot.exists:
             logger.info(f"No existing Firestore doc to archive for {doc_id}")
             return
 
         current = snapshot.to_dict()
-        rev_ts = datetime.datetime.utcnow().isoformat() + "Z"
-        versions_col = doc_ref.collection("versions")
-        # use proposal version if available, else timestamped
-        version_index = current.get("version", None)
-        if version_index is None:
-            version_index = rev_ts
 
+        # --- Extract important fields for querying ------------------------
+        onchain_meta = current.get("OnChain_MetaData", {})
+        track_number = (
+            onchain_meta.get("trackNumber")
+            or current.get("trackNumber")
+        )
+        proposer = onchain_meta.get("proposer")
+        title = current.get("title")
+        proposal_type = current.get("proposalType")
+
+        # --- Convert entire document to JSON string (SAFE) ----------------
+        try:
+            payload_str = json.dumps(current, default=str)
+        except Exception as e:
+            logger.error(f"Failed JSON encode during archive: {e}")
+            payload_str = "{}"
+
+        # --- Versioning ---------------------------------------------------
+        rev_ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
+        versions_col = doc_ref.collection("versions")
+        version_index = current.get("version") or rev_ts
+
+        # --- Write safe archive entry ------------------------------------
         versions_col.document(str(version_index)).set({
             "archivedAt": rev_ts,
             "archivedBy": "cybergov-dispatcher",
-            "payload": current,
+            "trackNumber": track_number,
+            "proposer": proposer,
+            "title": title,
+            "proposalType": proposal_type,
+            "payload": payload_str,   # ✔ JSON STRING (100% safe)
         })
+
         logger.info(f"Archived existing document into proposals/{doc_id}/versions/{version_index}")
+
     except Exception as e:
         logger.error(f"Failed to archive Firestore doc for {network}-{proposal_id}: {e}")
-        # non-fatal: allow processing to continue, but log
         raise FirestoreError("Failed to archive existing Firestore doc") from e
-
 
 @task(name="Update Firestore with Generated Content", retries=2, retry_delay_seconds=5)
 def update_firestore_with_content(content_md: str, network: str, proposal_id: int):
@@ -268,8 +292,8 @@ def update_firestore_with_content(content_md: str, network: str, proposal_id: in
         db = get_firestore_client()
         doc_id = f"{network}-{proposal_id}"
         doc_ref = db.collection("proposals").document(doc_id)
-
-        now_iso = datetime.datetime.utcnow().isoformat() + "Z"
+        
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         update_payload = {
             "files.content": content_md,

@@ -17,11 +17,17 @@ jobs:
 
     env:
       PROPOSAL_ID: ${{ inputs.proposal_id }}
-      NETWORK: 'polkadot'
+      # Hardcoded to polkadot:
+      NETWORK: polkadot
+
       FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
       POLKASSEMBLY_API_KEY: ${{ secrets.POLKASSEMBLY_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      
+
+      # provenance for manifest
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+      GITHUB_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout repository
@@ -36,4 +42,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run evaluation script
-        run: python src/votebot_evaluate_single_proposal_and_vote.py
+        run: python src/votebot_evaluate_single_proposal_and_vote.py "polkadot" ${{ inputs.proposal_id }}

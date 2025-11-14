@@ -232,7 +232,7 @@ def perform_preflight_checks_firestore(db, proposal_doc_ref) -> Tuple[List[Dict]
 # ---------------------------
 # Run MAGI evaluations
 # ---------------------------
-def run_magi_evaluations_firestone(magi_models_list: List[str], local_workspace: Path, openrouter_api_key: str) -> List[Path]:
+def run_magi_evaluations_firestore(magi_models_list: List[str], local_workspace: Path) -> List[Path]:
     """
     For each magi name:
       - use configured model string (MAGI_MODELS_DEFAULT)
@@ -275,10 +275,8 @@ def run_magi_evaluations_firestone(magi_models_list: List[str], local_workspace:
         logger.info("--- Processing Magi: %s (model=%s) ---", magi_key, model_id)
 
         # Compile agent (this is your existing helper; ensure it supports openrouter model strings)
-        compiled_agent = setup_compiled_agent(model_id=model_id, api_key=os.getenv("OPENROUTER_API_KEY"))
-
-        # Run inference (your helper should return a structured object; we guard for attributes)
-        prediction = run_single_inference(compiled_agent, personality_prompt, proposal_text, api_key=os.getenv("OPENROUTER_API_KEY"))
+        compiled_agent = setup_compiled_agent(model_id=model_id)
+        prediction = run_single_inference(compiled_agent, personality_prompt, proposal_text)
 
         # Prepare output JSON (rich fields)
         out_path = analysis_dir / f"{magi_key}.json"
@@ -459,7 +457,7 @@ def main():
             logger.error("OPENROUTER_API_KEY missing. Set as env var / GitHub secret.")
             raise RuntimeError("OPENROUTER_API_KEY missing")
 
-        analysis_files = run_magi_evaluations_firestone(magi_models, local_workspace, openrouter_api_key=os.getenv("OPENROUTER_API_KEY"))
+        analysis_files = run_magi_evaluations_firestore(magi_models, local_workspace)
         last_step = "consolidate"
         vote_file = consolidate_vote(analysis_files, local_workspace, proposal_id, network)
         last_step = "upload"

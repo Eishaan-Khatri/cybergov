@@ -81,7 +81,7 @@ def trigger_github_action_worker(proposal_id: int, network: str) -> Tuple[str, d
 
     url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow_file_name}/dispatches"
     headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"Bearer {pat}"}
-    data = {"ref": "main", "inputs": {"proposal_id": str(proposal_id), "network": network}}
+    data = {"ref": "main", "inputs": {"proposal_id": str(proposal_id)}}
 
     trigger_time = datetime.now(timezone.utc)
     with httpx.Client(timeout=30) as client:
@@ -118,7 +118,7 @@ def find_workflow_run(network: str, proposal_id: int, workflow_file_name: str, t
         for run in runs:
             created_at = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
             display_title = (run.get("display_title") or run.get("name") or "").lower()
-            if created_at >= trigger_time and f"#{proposal_id} on {network}" in display_title:
+            if created_at >= trigger_time and f"#{proposal_id}" in display_title and network.lower() in display_title:
                 logger.info("Found matching workflow run id=%s (created=%s)", run["id"], created_at.isoformat())
                 return int(run["id"])
 
