@@ -28,6 +28,8 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       GITHUB_RUN_ID: ${{ github.run_id }}
       GITHUB_SHA: ${{ github.sha }}
+      GH_PAT: ${{ secrets.PAT_GITHUB }}
+
 
     steps:
       - name: Checkout repository
@@ -42,4 +44,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run evaluation script
-        run: python src/votebot_evaluate_single_proposal_and_vote.py "polkadot" ${{ inputs.proposal_id }}
+        run: python src/votebot_evaluate_single_proposal_and_vote.py polkadot ${{ inputs.proposal_id }}

@@ -52,7 +52,9 @@ def get_github_pat() -> str:
         pass
 
     # 2) Environment variable fallback (useful for local CLI runs)
-    env_val = os.getenv("GITHUB_PAT")
+
+    env_val = os.getenv("GH_PAT")
+
     if env_val:
         return env_val
 
