@@ -23,6 +23,8 @@ jobs:
       FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
       POLKASSEMBLY_API_KEY: ${{ secrets.POLKASSEMBLY_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
 
       # provenance for manifest
       GITHUB_REPOSITORY: ${{ github.repository }}

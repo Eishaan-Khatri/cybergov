@@ -455,10 +455,11 @@ def main():
 
         last_step = "magi_eval"
         # Ensure OPENROUTER_API_KEY is provided
+        '''
         if not os.getenv("OPENROUTER_API_KEY"):
             logger.error("OPENROUTER_API_KEY missing. Set as env var / GitHub secret.")
             raise RuntimeError("OPENROUTER_API_KEY missing")
-
+'''
         analysis_files = run_magi_evaluations_firestore(magi_models, local_workspace)
         last_step = "consolidate"
         vote_file = consolidate_vote(analysis_files, local_workspace, proposal_id, network)
