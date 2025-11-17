@@ -173,6 +173,9 @@ def setup_compiled_agent(model_id: str):
     Configures a default LM for compilation and then compiles the agent.
     The compiler needs an active LM to process the training examples.
     """
+    
+    
+    '''
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
     if not openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY environment variable not set.")
@@ -188,7 +191,16 @@ def setup_compiled_agent(model_id: str):
     config = dict(max_bootstrapped_demos=3, max_labeled_demos=3)
     teleprompter = BootstrapFewShot(metric=None, **config)
     compiled_magi_agent = teleprompter.compile(MAGI(), trainset=trainset)
-
+    '''
+    gemini_lm = GeminiLM(model=model_id, api_key=api_key)
+    
+    # Configure DSPy with this Gemini client
+    dspy.configure(lm=gemini_lm)
+    
+    config = dict(max_bootstrapped_demos=3, max_labeled_demos=3)
+    teleprompter = BootstrapFewShot(metric=None, **config)
+    compiled_magi_agent = teleprompter.compile(MAGI(), trainset=trainset)
+    
     print(f"✅ Agent compiled successfully for model: {model_id}")
     return compiled_magi_agent
 
