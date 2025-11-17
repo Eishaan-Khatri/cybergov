@@ -1,6 +1,7 @@
 import dspy
 import os
 from dspy.teleprompt import BootstrapFewShot
+from utils.gemini_lm import GeminiLM
 
 
 # This signature remains the same.
