@@ -38,9 +38,9 @@ logger = setup_logging()
 # Using OpenRouter model spec strings (so the compiled agent / run_single_inference
 # function should accept these model strings).
 MAGI_MODELS_DEFAULT = magi_models = {
-    "balthazar": "openrouter/google/gemini-1.5-flash",
-    "melchior": "openrouter/google/gemini-1.5-flash",
-    "caspar": "openrouter/google/gemini-1.5-flash",
+    "balthazar": "google/gemini-2.5-flash",
+    "melchior": "google/gemini-2.5-flash",
+    "caspar": "google/gemini-2.5-flash",
 }
 
 
