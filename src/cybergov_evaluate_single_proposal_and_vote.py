@@ -193,12 +193,11 @@ def run_magi_evaluations(magi_models_list, local_workspace):
     magi_personalities = load_magi_personalities()
 
     # TODO maybe pick from a random list?
-    magi_models = {
-    "balthazar": "openrouter/google/gemini-1.5-flash",
-    "melchior": "openrouter/google/gemini-1.5-flash",
-    "caspar": "openrouter/google/gemini-1.5-flash",
-}
-
+    magi_llms = {
+        "balthazar": "openrouter/openai/gpt-5",
+        "melchior": "openrouter/google/gemini-2.5-pro-preview",
+        "caspar": "openrouter/anthropic/claude-sonnet-4",
+    }
 
     proposal_content_path = local_workspace / "content.md"
     if not proposal_content_path.exists():

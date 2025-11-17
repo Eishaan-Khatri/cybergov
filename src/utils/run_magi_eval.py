@@ -193,6 +193,9 @@ def setup_compiled_agent(model_id: str):
     teleprompter = BootstrapFewShot(metric=None, **config)
     compiled_magi_agent = teleprompter.compile(MAGI(), trainset=trainset)
     '''
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise EnvironmentError("GEMINI_API_KEY environment variable not set.")
     gemini_lm = GeminiLM(model=model_id, api_key=api_key)
     
     # Configure DSPy with this Gemini client
