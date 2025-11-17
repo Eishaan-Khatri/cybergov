@@ -194,9 +194,9 @@ def run_magi_evaluations(magi_models_list, local_workspace):
 
     # TODO maybe pick from a random list?
     magi_llms = {
-        "balthazar": "openrouter/openai/gpt-5",
-        "melchior": "openrouter/google/gemini-2.5-pro-preview",
-        "caspar": "openrouter/anthropic/claude-sonnet-4",
+        "balthazar": "openrouter/google/gemini-1.5-flash",
+        "melchior": "oopenrouter/google/gemini-1.5-flash",
+        "caspar": "openrouter/google/gemini-1.5-flash",
     }
 
     proposal_content_path = local_workspace / "content.md"

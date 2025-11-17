@@ -1,4 +1,5 @@
-# cybergov_data_scraper.py  (FULL REPLACEMENT)
+# votebot_data_scraper.py  
+
 import json
 from typing import Dict, Any, Optional
 import firebase_admin
@@ -202,17 +203,25 @@ def save_raw_data_to_firestore(raw_data: Dict[str, Any], network: str, proposal_
         doc_ref = db.collection("proposals").document(doc_id)
 
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        current_doc = doc_ref.get()
+        if current_doc.exists:
+            current = current_doc.to_dict()
+            version = (current.get("version") or 1) + 1
+            created_at = current.get("createdAt")
+        else:
+            version = 1
+            created_at = now_iso
 
         payload = {
             "network": network,
             "proposalId": int(proposal_id),
             "status": "discovered",
             "discoveredAt": now_iso,
-            "createdAt": now_iso,
+            "createdAt": created_at,
             "updatedAt": now_iso,
             "createdBy": "cybergov-dispatcher",
             "lastModifiedBy": "cybergov-dispatcher",
-            "version": 1,
+            "version": version,
             "files": {"rawData": raw_data},
         }
 
@@ -242,6 +251,9 @@ def archive_previous_firestore_version(network: str, proposal_id: int):
             return
 
         current = snapshot.to_dict()
+        
+        current_version = current.get("version") or 1
+        new_version = current_version + 1
 
         # --- Extract important fields for querying ------------------------
         onchain_meta = current.get("OnChain_MetaData", {})
@@ -263,7 +275,7 @@ def archive_previous_firestore_version(network: str, proposal_id: int):
         # --- Versioning ---------------------------------------------------
         rev_ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
         versions_col = doc_ref.collection("versions")
-        version_index = current.get("version") or rev_ts
+        version_index = rev_ts
 
         # --- Write safe archive entry ------------------------------------
         versions_col.document(str(version_index)).set({
@@ -275,8 +287,14 @@ def archive_previous_firestore_version(network: str, proposal_id: int):
             "proposalType": proposal_type,
             "payload": payload_str,   # ✔ JSON STRING (100% safe)
         })
+        
 
         logger.info(f"Archived existing document into proposals/{doc_id}/versions/{version_index}")
+        doc_ref.update({
+            "version": new_version,
+            "updatedAt": rev_ts,
+            "lastModifiedBy": "cybergov-dispatcher",
+        })
 
     except Exception as e:
         logger.error(f"Failed to archive Firestore doc for {network}-{proposal_id}: {e}")
@@ -323,12 +341,13 @@ def enrich_proposal_data(raw_proposal_data: Dict[str, Any], network: str, propos
 
 
 @task(name="Generate Prompt Content for LLM")
-def generate_prompt_content(raw_proposal_data: Dict[str, Any], network: str) -> str:
+def generate_prompt_content(raw_proposal_data: Dict[str, Any], network: str, proposal_id: int) -> str:
     """
     Generate the markdown content for MAGIS based on the raw proposal data.
     Returns markdown string content.
     """
     logger = get_run_logger()
+    raw_proposal_data["proposalId"] = proposal_id
     logger.info(f"Generating content for {network} proposal {raw_proposal_data.get('proposalId')}")
 
     try:
@@ -527,7 +546,8 @@ async def fetch_proposal_data(
         enriched_data = enrich_proposal_data(raw_proposal_data=raw_proposal_data, network=network, proposal_id=proposal_id)
 
         # 7) Generate prompt content (in-memory)
-        content_md = generate_prompt_content(raw_proposal_data=enriched_data, network=network)
+        content_md = generate_prompt_content(raw_proposal_data=enriched_data, network=network, proposal_id=proposal_id)
+
 
         # 8) Update Firestore with generated content
         update_firestore_with_content(content_md=content_md, network=network, proposal_id=proposal_id)
