@@ -29,14 +29,10 @@ from firebase_admin import firestore as admin_firestore
 # Internal utils - expect these to exist in your codebase
 from utils.helpers import setup_logging, get_config_from_env, hash_file
 from utils.run_magi_eval import run_single_inference, setup_compiled_agent
+from utils.weighted_decision_engine import compute_weighted_decision, list_available_templates
 
 logger = setup_logging()
 
-# ---------------------------
-# Configuration: models used
-# ---------------------------
-# Using OpenRouter model spec strings (so the compiled agent / run_single_inference
-# function should accept these model strings).
 MAGI_MODELS_DEFAULT = magi_models = {
     "balthazar": "gemini-2.5-flash",  # or the Gemini model you're using
     "melchior": "gemini-2.5-flash",
@@ -307,50 +303,73 @@ def run_magi_evaluations_firestore(magi_models_list: List[str], local_workspace:
 
 
 # ---------------------------
-# Consolidate votes
+# Consolidate votes using Weighted Decision Engine
 # ---------------------------
 def consolidate_vote(analysis_files: List[Path], local_workspace: Path, proposal_id: int, network: str) -> Path:
-    logger.info("03 - Consolidating vote...")
+    logger.info("03 - Consolidating vote using Weighted Decision Engine...")
+    
+    # Get strategy from environment variable (default: neutral)
+    strategy_name = os.getenv("CYBERGOV_VOTING_STRATEGY", "neutral").lower()
+    logger.info(f"Using voting strategy: {strategy_name}")
+    
+    # Prepare agent votes for weighted engine
+    agent_votes = []
     votes_breakdown = []
-    decisions: List[str] = []
-
+    
     for analysis_file in analysis_files:
         data = json.loads(analysis_file.read_text(encoding="utf-8"))
-        model_name = analysis_file.stem
+        agent_name = analysis_file.stem  # balthazar, melchior, caspar
         raw_decision = str(data.get("decision", "")).strip()
+        
+        # Normalize decision
         if raw_decision.upper() == "AYE":
             normalized = "Aye"
         elif raw_decision.upper() == "NAY":
             normalized = "Nay"
         else:
             normalized = "Abstain"
-        votes_breakdown.append({"model": model_name, "decision": normalized, "confidence": data.get("confidence")})
-        decisions.append(normalized)
-
-    if not decisions:
+        
+        # For weighted engine
+        agent_votes.append({
+            "agent": agent_name,
+            "decision": normalized
+        })
+        
+        # For breakdown display
+        votes_breakdown.append({
+            "model": agent_name,
+            "decision": normalized,
+            "confidence": data.get("confidence")
+        })
+    
+    # Use weighted decision engine
+    if not agent_votes:
+        logger.warning("No agent votes found, defaulting to Abstain")
         final_decision = "Abstain"
         is_conclusive = False
         is_unanimous = False
+        weighted_result = None
     else:
-        is_unanimous = len(set(decisions)) == 1
-        if is_unanimous:
-            final_decision = decisions[0]
-            is_conclusive = True
-        else:
-            counts = Counter(decisions)
-            aye = counts.get("Aye", 0)
-            nay = counts.get("Nay", 0)
-            # Two Aye + one Abstain => Aye ; Two Nay + one Abstain => Nay ; else Abstain
-            if aye == 2 and nay == 0:
-                final_decision = "Aye"
-            elif nay == 2 and aye == 0:
-                final_decision = "Nay"
-            else:
-                final_decision = "Abstain"
-            is_conclusive = False
-
+        weighted_result = compute_weighted_decision(
+            agent_votes=agent_votes,
+            template_name=strategy_name
+        )
+        
+        final_decision = weighted_result.final_decision
+        is_unanimous = len(set(v["decision"] for v in agent_votes)) == 1
+        is_conclusive = weighted_result.confidence in ["Strong", "Moderate"]
+        
+        logger.info(f"Weighted Decision: {final_decision}")
+        logger.info(f"Confidence: {weighted_result.confidence}")
+        logger.info(f"Margin: {weighted_result.margin:.3f}")
+        logger.info(f"Rules Triggered: {', '.join(weighted_result.rules_triggered)}")
+        logger.info(f"Weighted Scores: Aye={weighted_result.weighted_scores['Aye']:.3f}, "
+                   f"Nay={weighted_result.weighted_scores['Nay']:.3f}, "
+                   f"Abstain={weighted_result.weighted_scores['Abstain']:.3f}")
+    
     summary_rationale = generate_summary_rationale(votes_breakdown, proposal_id, network, analysis_files)
-
+    
+    # Build vote data with weighted engine metadata
     vote_data = {
         "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "is_conclusive": is_conclusive,
@@ -359,7 +378,21 @@ def consolidate_vote(analysis_files: List[Path], local_workspace: Path, proposal
         "summary_rationale": summary_rationale,
         "votes_breakdown": votes_breakdown,
     }
-
+    
+    # Add weighted engine details if available
+    if weighted_result:
+        vote_data["weighted_decision_metadata"] = {
+            "engine_version": weighted_result.engine_version,
+            "strategy_used": weighted_result.template_used,
+            "template_weights": weighted_result.template_weights,
+            "weighted_scores": weighted_result.weighted_scores,
+            "margin": weighted_result.margin,
+            "confidence": weighted_result.confidence,
+            "rules_triggered": weighted_result.rules_triggered,
+            "decision_reasoning": weighted_result.decision_reasoning,
+            "agent_votes_with_weights": weighted_result.agent_votes
+        }
+    
     vote_path = local_workspace / "vote.json"
     vote_path.write_text(json.dumps(vote_data, indent=2), encoding="utf-8")
     logger.info("✅ Vote consolidated into %s", vote_path)
@@ -389,8 +422,12 @@ def upload_outputs_and_generate_manifest_firestore(
             f"files.outputs.{logical}.hash": file_hash,
             f"files.outputs.{logical}.timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
-        proposal_doc_ref.update(update_payload)
-        logger.info("Uploaded %s -> Firestore path files.outputs.%s", lf.name, logical)
+        try:
+            proposal_doc_ref.update(update_payload)
+            logger.info("Uploaded %s -> Firestore path files.outputs.%s", lf.name, logical)
+        except Exception as e:
+            logger.error("Failed uploading %s: %s", lf.name, e, exc_info=True)
+            raise
 
         manifest_outputs.append({"logical_name": logical, "firestore_path": f"proposals/{proposal_doc_ref.id}/files/outputs/{logical}", "hash": file_hash})
 
