@@ -403,13 +403,16 @@ def consolidate_vote(analysis_files: List[Path], local_workspace: Path, proposal
 # Upload outputs and build manifest (Firestore)
 # ---------------------------
 def upload_outputs_and_generate_manifest_firestore(
-    db, proposal_doc_ref, local_workspace: Path, analysis_files: List[Path], vote_file: Path, manifest_inputs: List[Dict]
+    db, proposal_doc_ref, local_workspace: Path, analysis_files: List[Path], vote_file: Optional[Path], manifest_inputs: List[Dict]
 ) -> Dict:
     logger.info("04 - Attesting and uploading outputs to Firestore...")
     manifest_outputs: List[Dict] = []
 
-    # Upload each analysis file and vote file into doc.files.outputs.<logical>
-    all_files = analysis_files + [vote_file]
+    # Upload each analysis file and vote file (if present) into doc.files.outputs.<logical>
+    all_files = analysis_files.copy()
+    if vote_file:
+        all_files.append(vote_file)
+    
     for lf in all_files:
         lf = Path(lf)
         content = lf.read_text(encoding="utf-8")
@@ -498,8 +501,12 @@ def main():
             raise RuntimeError("OPENROUTER_API_KEY missing")
 '''
         analysis_files = run_magi_evaluations_firestore(magi_models, local_workspace)
-        last_step = "consolidate"
-        vote_file = consolidate_vote(analysis_files, local_workspace, proposal_id, network)
+        
+        # REMOVED: consolidate_vote step (as per "Evaluate Once, Vote Many" architecture)
+        # We no longer create a single "vote.json" for the proposal. 
+        # Instead, individual user votes are calculated on-demand or via user-specific pipelines.
+        vote_file = None 
+        
         last_step = "upload"
         manifest = upload_outputs_and_generate_manifest_firestore(db, proposal_doc_ref, local_workspace, analysis_files, vote_file, manifest_inputs)
 
